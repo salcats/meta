@@ -108,7 +108,7 @@ def generate_data(
 
     return [X, X_df, labels]
 
-def compute_model_scores(
+def compute_model_results(
                             model: cdt.causality.pairwise,
                             data: onp.ndarray,
                             labels: onp.ndarray
@@ -133,7 +133,7 @@ def compute_model_scores(
     scores = (predictions == labels).astype(int)
     scores[scores==0] = -1
     
-    return {"Predictions": predictions, "Scores": scores}
+    return {"predictions": predictions, "scores": scores}
 
 def return_max_entries(array: onp.ndarray):
     """ Returns the max entry in each row from a matrix as a vector.
@@ -250,7 +250,7 @@ def unpack_batched_gram_matrices(
     return gram_matrix
 
 
-def compute_training_gram(
+def compute_batched_gram_matrix(
                             X_train: jnp.ndarray,
                             kernel: Callable,
                             params: Dict[str, float],
@@ -458,3 +458,21 @@ def ensemble_10(no_test_samples, labels_test, classifiers, models):
     meta_predictions = onp.sign(meta_predictions)
 
     return accuracy_score(labels_test, meta_predictions)
+
+
+def smm_fit( smm, smm_name, data, gram_matrix, labels):
+    smm.fit(
+                data,
+                gram_matrix,
+                labels
+    )
+    return smm_name, smm
+
+    
+def smm_predict( smm, smm_name, data, gram_matrix, labels):
+    smm.predict(
+                data,
+                gram_matrix,
+                labels
+    )
+    return smm_name, smm
