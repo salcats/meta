@@ -1,79 +1,86 @@
-import numpy as np
-from scipy import spatial 
-import utilities
-import time 
-import jax
-import jax.numpy as jnp
-import functools
-from typing import Callable, Dict 
-from jax.experimental import loops
+import cdt
+import numpy as onp
+from os import cpu_count
+from arbitrator import Arbitrator
+from utilities import rq_kernel, rbf_kernel
 
-no_samples= 50
-no_sample_points = 50
+# Define data parameters.
+data_params = {
+                "causal_mechanism": "sigmoid_mix",
+                "noise_coeff": 0.2,
+                "no_sample_points": 250,
+                "no_train_samples": 250,                
+                "no_test_samples": 100,
+                "rescale": True
+}
 
-x = np.random.rand(no_sample_points, no_samples)
-y = x
+# Define computation parameters.
+computation_params = {
+                        "batched": True,
+                        "training_step_size": 50,
+                        "n_jobs": cpu_count() - 1
+}
 
+# Define SMM parameters.
+smm_params = {
+                "svm_param_grid": {'C': onp.linspace(1e-1, 1e3, 20)},
+}
 
+# Define kernel parameters.
+kernel_params = {"gamma": data_params["no_train_samples"]}
+kernel_func = rbf_kernel
 
-#@functools.partial(jax.jit, static_argnums=(0))
-def compute_gram_v1(
-                    func: Callable,
-                    params: Dict[str, float],
-                    x: jnp.ndarray,
-                    y: jnp.ndarray,
-    ) -> jnp.ndarray:
+# Define base models. (Only using models that don't require training)
+base_models = {
+                "RECI": cdt.causality.pairwise.RECI(),
+                "ANM" : cdt.causality.pairwise.ANM(),    
+                "CDS" : cdt.causality.pairwise.CDS(),
+                "IGCI" : cdt.causality.pairwise.IGCI(), 
+                "BV" : cdt.causality.pairwise.BivariateFit(), 
+}
 
-    no_samples = x.shape[0]
-    no_sample_points = x.shape[1]
+# Determine verbosity.
+verbose = True
+
+kernel_params = {"gamma": data_params["no_train_samples"]}
+kernel_func = rbf_kernel
+
+# Initialise arbitrator.
+arbitrator = Arbitrator(
+                            data_params,
+                            kernel_func,
+                            kernel_params,
+                            computation_params,
+                            smm_params,
+                            base_models,
+                            verbose
+)
+
+run_hp_optimisation = False
+
+if not run_hp_optimisation:
     
-    gram_matrix = jnp.zeros((no_samples, no_samples)) 
+    # Run without kernel hyperparameter optimisation
 
-    for i in range(no_samples):
-        gram_matrix = gram_matrix.at[i, i:no_samples].set(jax.vmap(lambda y_1: func(no_sample_points, params, x[i,:], y_1))(y[i:,:]))
+    best_results_dataframe, best_accuracy = arbitrator.run_arbitration(run_hp_optimisation)
 
-    with loops.Scope() as s:
-    
-        s.gram_matrix = jnp.zeros((no_samples, no_samples)) 
-  
-        for i in s.range(s.gram_matrix.shape[0]):
-            s.gram_matrix = s.gram_matrix.at[i, i:no_samples].set(jax.vmap(lambda y_1: func(no_sample_points, params, x[i,:], y_1))(y[i:,:]))
-            
-    inner_product = lambda x_1: jax.vmap(lambda y_1: func(no_sample_points, params, x_1, y_1))(y)
-    
-    gram_mat = jax.lax.map(inner_product, x)
- 
-    quit()
+    print("\n")
+    print(best_results_dataframe)
 
-    return gram_mat
+else:
 
-#@functools.partial(jax.jit, static_argnums=(0))
-def rbf_kernel_v1(
-                no_sample_points: float,
-                params: Dict[str, float],
-                x: jnp.ndarray,
-                y: jnp.ndarray
-    ) -> jnp.ndarray:
-    return jnp.mean(jnp.exp(-params["gamma"] * pdist_v1(no_sample_points, x, y)))
+    # Run without kernel hyperparameter optimisation
 
-#@functools.partial(jax.jit, static_argnums=(0))
-def pdist_v1(no_samples: float, x: jnp.ndarray, y: jnp.ndarray) -> jnp.ndarray:
-    """squared euclidean distance matrix
-    Notes
-    -----
-    This is equivalent to the scipy commands
-    >>> from scipy.spatial.distance import pdist, squareform
-    >>> dists = squareform(pdist(X, metric='sqeuclidean')
-    """
-    I = jnp.ones((no_samples, ))
-    return jnp.outer(jnp.power(x, 2), I) + jnp.outer(I, jnp.power(y, 2)) - 2*jnp.outer(x, y) 
+    hp_optimisation_params = {
+                                "no_samples": 50,
+                                "gamma_min": 1, 
+                                "gamma_max": 1e4, 
+                                "max_evals": 10
+    }
 
-kernel_params = {"gamma": 1}
-
-
-x = jnp.asarray(x)
-y = jnp.asarray(y)
-
-st = time.time()
-G_1 = compute_gram_v1(rbf_kernel_v1, kernel_params, x, y)
-print("jnp: ", time.time() - st)
+    best_results_dataframe, best_accuracy = arbitrator.run_arbitration(
+                                                        run_hp_optimisation,
+                                                        hp_optimisation_params=hp_optimisation_params
+    )
+    print("\n")
+    print(best_results_dataframe)

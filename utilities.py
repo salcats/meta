@@ -1,21 +1,26 @@
 import functools
-from re import A
 import jax
 import jax.numpy as jnp
 import numpy as onp
 import cdt
 from typing import Callable, Dict 
 from joblib import Parallel, delayed
-from sklearn.metrics import accuracy_score
-
 
 
 @functools.partial(jax.jit, static_argnums=(0, 4))
 def pdist_squareform(no_sample_points: float, x: jnp.ndarray, y: jnp.ndarray) -> jnp.ndarray:
-    """ Computes the squared euclidean distance matrix.
+    """  Computes the squared euclidean distance matrix.
 
     This function computes the squared euclidean distance matrix between two 
     samples x, y from probability distributions P and Q.
+
+    Parameters
+    -----------
+       
+
+    Returns
+    -----------
+
     """
     I = jnp.ones((no_sample_points, ))
     return jnp.outer(jnp.power(x, 2), I) + jnp.outer(I, jnp.power(y, 2)) - 2*jnp.outer(x, y) 
@@ -27,12 +32,20 @@ def rbf_kernel(
                 x: jnp.ndarray,
                 y: jnp.ndarray
     ) -> jnp.ndarray:
-    """ Computes the inner product between two samples x, y constructed from
+    """   Computes the inner product between two samples x, y constructed from
     RBF kernel.
     
     This function computes the inner product between two samples x, y 
     from the embedded probability distributions mu(P)_k and mu(Q)_k. The
     kernel of the RKHS is the RBF kernel. 
+    
+    Parameters
+    -----------
+       
+
+    Returns
+    -----------
+
     """
     return jnp.mean(jnp.exp(-params["gamma"] * pdist_squareform(no_sample_points, x, y)))
 
@@ -43,18 +56,25 @@ def rq_kernel(
                 x: jnp.ndarray,
                 y: jnp.ndarray
     ) -> jnp.ndarray:
-    """ Computes the inner product between two samples x, y in a RKHS constructed from 
+    """  Computes the inner product between two samples x, y in a RKHS constructed from 
     RQ kernel.
     
     This function computes the inner product between two samples x, y 
     from the embedded probability distributions mu(P)_k and mu(Q)_k. The
     kernel of the RKHS is the RQ kernel. 
-    """    
-    return jnp.mean(jnp.power(1 + (params["factor"]\
-                             *pdist_squareform(no_sample_points, x, y)), -params["alpha"]))
+    
+    Parameters
+    -----------
+       
+
+    Returns
+    -----------
+
+    """ 
+    return jnp.mean(jnp.power(1 + (params["factor"]*pdist_squareform(no_sample_points, x, y)), -params["alpha"]))
 
 @functools.partial(jax.jit, static_argnums=(0, 4))
-def compute_gram_matrix(
+def compute_gram(
                     func: Callable,
                     params: Dict[str, float],
                     x: jnp.ndarray,
@@ -64,6 +84,14 @@ def compute_gram_matrix(
     
     This function computes the gram matrix between n samples x, y from 
     the embedded probability distributions mu(P)_k and mu(Q)_k.
+    
+    Parameters
+    -----------
+       
+
+    Returns
+    -----------
+
     """    
     # Determine the number of points in each sample.
     no_sample_points = x.shape[1]
@@ -72,9 +100,9 @@ def compute_gram_matrix(
     inner_loop = lambda x_1: jax.vmap(lambda y_1: func(no_sample_points, params, x_1, y_1))(y)
     
     # Compute the outer loop, i.e. the inner loop for all x_i.
-    gram_matrix = jax.lax.map(inner_loop, x)
+    gram = jax.lax.map(inner_loop, x)
 
-    return gram_matrix
+    return gram
 
 
 def generate_data(
@@ -86,7 +114,15 @@ def generate_data(
     """ Generates data. 
     
     This function generates data ... 
-    """
+    
+    Parameters
+    -----------
+       
+
+    Returns
+    -----------
+
+    """ 
     # Generate data.
     X_df, labels_df = data_generator.generate(
                                                 no_samples,
@@ -117,14 +153,11 @@ def compute_model_results(
 
     Parameters
     -----------
-        classifier (cdt.causality.pairwise): [description]
-        data (onp.ndarray): [description]
-        labels (onp.ndarray): [description]
+       
 
     Returns
     -----------
 
-        Dict: [description]
     """
     # Compute model predictions.
     predictions = onp.sign(model.predict(data)).astype(int)
@@ -173,30 +206,6 @@ def normalise_decisions(decisions: onp.ndarray):
     return decision_signs * norm_abs_decisions
 
 
-def compute_batch_gram_matrix(
-                                kernel: Callable,
-                                params: Dict[str, float],
-                                x: jnp.ndarray,
-                                y: jnp.ndarray,
-    ) -> jnp.ndarray:
-    """ Computes batched gram matrix.
-    
-    Description...
-
-    Args:
-        kernel (Callable): [description]
-        params (Dict[str, float]): [description]
-        x (jnp.ndarray): [description]
-        y (jnp.ndarray): [description]
-
-    Returns:
-        jnp.ndarray: [description]
-    """
-    gram_matrix = compute_gram_matrix(kernel, params, x , y )
-
-    return gram_matrix
-
-
 def generate_indices(
                         no_samples: int,
                         step_size: int
@@ -225,32 +234,25 @@ def generate_indices(
     return indices
 
 
-def unpack_batched_gram_matrices(
-                                    batched_gram_matrices: list,
+def unpack_batched_train_grams(
+                                    batched_grams: list,
                                     no_samples: int,
                                     indices: list
     ) -> jnp.ndarray:
     """[summary]
 
-    Args:
-        batched_gram_matrices (list): [description]
-        no_samples (int): [description]
-        indices (list): [description]
-
-    Returns:
-        jnp.ndarray: [description]
     """
-    gram_matrix = onp.zeros((no_samples, no_samples))
+    gram = onp.zeros((no_samples, no_samples))
 
     for i in range(len(indices)):
         index = indices[i]
-        gram_matrix[index[0]:index[1], index[2]:index[3]] = batched_gram_matrices[i]
-        gram_matrix[index[2]:index[3], index[0]:index[1]] = batched_gram_matrices[i].T
+        gram[index[0]:index[1], index[2]:index[3]] = batched_grams[i]
+        gram[index[2]:index[3], index[0]:index[1]] = batched_grams[i].T
 
-    return gram_matrix
+    return gram
 
 
-def compute_batched_gram_matrix(
+def compute_batched_train_grams(
                             X_train: jnp.ndarray,
                             kernel: Callable,
                             params: Dict[str, float],
@@ -272,207 +274,159 @@ def compute_batched_gram_matrix(
     """
     # Generate indices.
     indices = generate_indices(no_samples, step_size)
-    
+
     # Compute batched gram matrices across CPU cores.
-    batched_gram_matrices = Parallel(n_jobs=n_jobs)(delayed(compute_batch_gram_matrix)\
+    batched_grams = Parallel(n_jobs=n_jobs)(delayed(compute_gram)\
                     (kernel, params, X_train[index[0]:index[1]],
                     X_train[index[2]:index[3]]) for index in indices)
 
     # Unpack the batched gram matrices.
-    gram_matrix = unpack_batched_gram_matrices(batched_gram_matrices, no_samples, indices)
+    gram = unpack_batched_train_grams(batched_grams, no_samples, indices)
 
-    return gram_matrix
+    return gram
 
+def unpack_batched_test_gram(
+                                batched_grams: list,
+                                no_test_samples: int,
+                                no_train_samples: int,
+                                no_steps: int
+    ) -> jnp.ndarray:
+    """[summary]
 
+    Args:
+        batched_gram_matrices (list): [description]
+        no_samples (int): [description]
+        indices (list): [description]
 
-def ensemble_1(no_test_samples, labels_test, classifiers, models):
+    Returns:
+        jnp.ndarray: [description]
+    """
+    gram = onp.zeros((no_test_samples, no_train_samples))
+
+    for i in range(no_steps):
+        gram[:,i:(i+1)*no_test_samples] = batched_grams[i]
+
+    return gram
+
+def compute_batched_test_gram(
+                            X_test: jnp.ndarray,   
+                            X_train: jnp.ndarray,                                                     
+                            kernel: Callable,
+                            params: Dict[str, float],
+                            no_test_samples: int,                            
+                            no_train_samples: int,
+                            n_jobs: int
+    ):
+    """[summary]
+
+    Args:
+        X_train (jnp.ndarray): [description]
+        X_test (jnp.ndarray): [description]        
+        kernel (Callable): [description]
+        params (Dict[str, float]): [description]
+        no_samples (int): [description]
+        step_size (int): [description]
+
+    Returns:
+        [type]: [description]
+    """
+    # Determine number of batched gram matrices we need to compute.
+    no_steps = int(no_train_samples/no_test_samples)
     
-    meta_predictions = onp.zeros((no_test_samples, ))
+    # Compute batched gram matrices across CPU cores.
+    batched_gram = Parallel(n_jobs=n_jobs)(delayed(compute_gram)\
+                    (kernel, params, X_test,
+                    X_train[i:(i+1)*no_test_samples,:]) for i in range(no_steps))
 
-    for classifier_name in classifiers.keys():
+    # Unpack the batched gram matrices.
+    gram = unpack_batched_test_gram(batched_gram, no_test_samples, no_train_samples, no_steps)
 
-        decisions = models[classifier_name][0]
-        predictions = models[classifier_name][1]
-        accuracy = models[classifier_name][2]
-        
-        
-        meta_predictions += decisions*predictions
-        
-    meta_predictions = onp.sign(meta_predictions)
+    return gram
 
-    return accuracy_score(labels_test, meta_predictions)
 
-def ensemble_2(no_test_samples, labels_test, classifiers, models):
+def smm_compute_model_results( smm, smm_name, data, labels):
+    """ Fits the SMMs.
     
-    meta_predictions = onp.zeros((no_test_samples, ))
+    Parameters
+    -----------
+       
 
-    for classifier_name in classifiers.keys():
+    Returns
+    -----------
 
-        decisions = models[classifier_name][0]
-        predictions = models[classifier_name][1]
-        accuracy = models[classifier_name][2]
-      
-        meta_predictions += onp.exp(decisions)*predictions
-        
-    meta_predictions = onp.sign(meta_predictions)
-
-    return accuracy_score(labels_test, meta_predictions)
-
-def ensemble_3(no_test_samples, labels_test, classifiers, models):
+    """
+    # Fit the SMM with the training data.
+    smm.compute_model_results(data, labels)
     
-    meta_predictions = onp.zeros((no_test_samples, ))
+    return smm_name, smm
 
-    for classifier_name in classifiers.keys():
 
-        decisions = models[classifier_name][0]
-        predictions = models[classifier_name][1]
-        accuracy = models[classifier_name][2]
-      
-        meta_predictions += decisions*predictions*onp.power(accuracy, 1)
-        
-    meta_predictions = onp.sign(meta_predictions)
-
-    return accuracy_score(labels_test, meta_predictions)
-
-def ensemble_4(no_test_samples, labels_test, classifiers, models):
+def smm_fit( smm, smm_name, gram_matrix):
+    """ Fits the SMMs.
     
-    meta_predictions = onp.zeros((no_test_samples, ))
+    Parameters
+    -----------
+       
 
-    for classifier_name in classifiers.keys():
+    Returns
+    -----------
 
-        decisions = models[classifier_name][0]
-        predictions = models[classifier_name][1]
-        accuracy = models[classifier_name][2]
-      
-        meta_predictions += decisions*predictions*onp.power(accuracy, 2)
-        
-    meta_predictions = onp.sign(meta_predictions)
-
-    return accuracy_score(labels_test, meta_predictions)
-
-def ensemble_5(no_test_samples, labels_test, classifiers, models):
-    
-    meta_predictions = onp.zeros((no_test_samples, len(classifiers) ))
-
-    count = 0
-    for classifier_name in classifiers.keys():
-
-        decisions = models[classifier_name][0]
-        predictions = models[classifier_name][1]
-        accuracy = models[classifier_name][2]
-      
-        meta_predictions[:, count] = decisions*predictions
-        
-        count += 1
-    meta_predictions = onp.sign(return_max_entries(meta_predictions))
-
-    return accuracy_score(labels_test, meta_predictions)
-
-def ensemble_6(no_test_samples, labels_test, classifiers, models):
-    
-    meta_predictions = onp.zeros((no_test_samples, len(classifiers) ))
-
-    count = 0
-    for classifier_name in classifiers.keys():
-
-        decisions = models[classifier_name][0]
-        predictions = models[classifier_name][1]
-        accuracy = models[classifier_name][2]
-      
-        meta_predictions[:, count] = onp.exp(decisions)*predictions
-        
-        count += 1
-    meta_predictions = onp.sign(return_max_entries(meta_predictions))
-
-    return accuracy_score(labels_test, meta_predictions)
-
-def ensemble_7(no_test_samples, labels_test, classifiers, models):
-    
-    meta_predictions = onp.zeros((no_test_samples, len(classifiers) ))
-
-    count = 0
-    for classifier_name in classifiers.keys():
-
-        decisions = models[classifier_name][0]
-        predictions = models[classifier_name][1]
-        accuracy = models[classifier_name][2]
-      
-        meta_predictions[:, count] = decisions*predictions*onp.power(accuracy, 1)
-        
-        count += 1
-        
-    meta_predictions = onp.sign(return_max_entries(meta_predictions))
-
-    return accuracy_score(labels_test, meta_predictions)
-
-def ensemble_8(no_test_samples, labels_test, classifiers, models):
-    
-    meta_predictions = onp.zeros((no_test_samples, len(classifiers) ))
-
-    count = 0
-    for classifier_name in classifiers.keys():
-
-        decisions = models[classifier_name][0]
-        predictions = models[classifier_name][1]
-        accuracy = models[classifier_name][2]
-      
-        meta_predictions[:, count] = decisions*predictions*onp.power(accuracy, 2)
-        
-        count += 1
-        
-    meta_predictions = onp.sign(return_max_entries(meta_predictions))
-
-    return accuracy_score(labels_test, meta_predictions)
-
-def ensemble_9(no_test_samples, labels_test, classifiers, models):
-    
-    meta_predictions = onp.zeros((no_test_samples, len(classifiers) ))
-
-    count = 0
-    for classifier_name in classifiers.keys():
-
-        decisions = models[classifier_name][0]
-        predictions = models[classifier_name][1]
-        accuracy = models[classifier_name][2]
-      
-        meta_predictions[:, count] = onp.exp(decisions)*predictions*onp.power(accuracy, 1)
-        
-        count += 1
-        
-    meta_predictions = onp.sign(return_max_entries(meta_predictions))
-
-    return accuracy_score(labels_test, meta_predictions)
-
-def ensemble_10(no_test_samples, labels_test, classifiers, models):
-    
-    meta_predictions = onp.zeros((no_test_samples, ))
-
-    for classifier_name in classifiers.keys():
-
-        decisions = models[classifier_name][0]
-        predictions = models[classifier_name][1]
-        accuracy = models[classifier_name][2]
-      
-        meta_predictions += onp.exp(decisions)*predictions*onp.power(accuracy, 1)
-        
-    meta_predictions = onp.sign(meta_predictions)
-
-    return accuracy_score(labels_test, meta_predictions)
-
-
-def smm_fit( smm, smm_name, data, gram_matrix, labels):
+    """
+    # Fit the SMM with the training data.
     smm.fit(
-                data,
                 gram_matrix,
-                labels
     )
     return smm_name, smm
 
     
 def smm_predict( smm, smm_name, data, gram_matrix, labels):
+    """ Predicts test data with the SMMs.
+    
+    Parameters
+    -----------
+       
+
+    Returns
+    -----------
+
+    """
+    # Use the SMM to predict the causal directions of the test data.
     smm.predict(
                 data,
                 gram_matrix,
                 labels
     )
     return smm_name, smm
+
+def smm_contribution(no_test_samples, ensemble_params, smm):
+    """ Computes the contribution from each SMM to the ensemble. 
+    
+    Parameters
+    -----------
+       
+
+    Returns
+    -----------
+
+    """
+    # Initialise SMM contribution array.
+    smm_contribution = onp.zeros((no_test_samples, ))
+    
+    # Store SMM decisions in temporary array.
+    decisions = smm.decisions
+    
+    # Update decisions according to ensemble configuration.
+    if ensemble_params["norm_decisions"]:
+        decisions = normalise_decisions(decisions)
+                
+    if ensemble_params["exp_decision_function"]:
+        decisions = onp.exp(decisions)
+                
+    # Compute SMM contribution according to ensemble configuration.
+    if ensemble_params["accuracy"]:
+        smm_contribution = decisions*smm.predictions*onp.power(smm.accuracy, ensemble_params["accuracy_exponent"])
+    else:
+        smm_contribution = decisions*smm.predictions
+
+    return smm_contribution
+
