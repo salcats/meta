@@ -4,19 +4,27 @@ from os import cpu_count
 from arbitrator import Arbitrator
 from utilities import rq_kernel, rbf_kernel
 
+#### Note
+## For no_test_samples = 50, best not to set batched_test=False 
+## For no_test_samples = 100, best to set batched_test=True
+## Don't set no_test_samples > 100 for now as I would need to change the function 
+## for computing the batched gram matrices.
+## Leave the training_step_size=50 for the batched computation of training grams. 
+
 # Define data parameters.
 data_params = {
                 "causal_mechanism": "sigmoid_mix",
                 "noise_coeff": 0.2,
                 "no_sample_points": 250,
                 "no_train_samples": 250,                
-                "no_test_samples": 100,
+                "no_test_samples": 50,
                 "rescale": True
 }
 
 # Define computation parameters.
 computation_params = {
-                        "batched": True,
+                        "batched_train": True,
+                        "batched_test": False,           
                         "training_step_size": 50,
                         "n_jobs": cpu_count() - 1
 }

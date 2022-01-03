@@ -154,7 +154,7 @@ class Arbitrator():
             
         # Compute training gram matrix.
         
-        if self.computation_params["batched"]==True:
+        if self.computation_params["batched_train"]==True:
             self.data_train["gram"]  = compute_batched_train_grams(
                                 self.data_train["X"],
                                 self.kernel_func,
@@ -192,7 +192,7 @@ class Arbitrator():
             start_time = timer()
             
         # Compute testing gram matrix.
-        if self.computation_params["batched"]==True:
+        if self.computation_params["batched_test"]==True:
             self.data_test["gram"]  = compute_batched_test_gram(
                                 self.data_test["X"],
                                 self.data_train["X"],
