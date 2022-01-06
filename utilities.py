@@ -22,8 +22,11 @@ def pdist_squareform(no_sample_points: float, x: jnp.ndarray, y: jnp.ndarray) ->
     -----------
 
     """
-    I = jnp.ones((no_sample_points, ))
-    return jnp.outer(jnp.power(x, 2), I) + jnp.outer(I, jnp.power(y, 2)) - 2*jnp.outer(x, y) 
+    I = jax.device_put(jnp.ones((no_sample_points, )))
+                       
+    return jnp.outer(jnp.power(x, 2), I) \
+        + jnp.outer(I, jnp.power(y, 2))  \
+            - 2*jnp.outer(x, y)  
 
 @functools.partial(jax.jit,  static_argnums=(0, 4))
 def rbf_kernel(
@@ -104,6 +107,48 @@ def compute_gram(
 
     return gram
 
+
+@functools.partial(jax.jit, static_argnums=(0, 4))
+def compute_gram_gpu(
+                    func: Callable,
+                    params: Dict[str, float],
+                    x: jnp.ndarray,
+                    y: jnp.ndarray,
+    ) -> jnp.ndarray:
+    """ Computes the gram matrix between n samples x, y. 
+    
+    This function computes the gram matrix between n samples x, y from 
+    the embedded probability distributions mu(P)_k and mu(Q)_k.
+    
+    Parameters
+    -----------
+       
+
+    Returns
+    -----------
+
+    """    
+    # Move data to GPU
+    x = jax.device_put(x)
+    y = jax.device_put(y)
+
+    # Determine the number of points in each sample.
+    no_sample_points = x.shape[1]
+        
+    # Compute the outer loop, i.e. the inner loop for all x_i.
+    gram = jax.vmap(lambda x_1, y_1: func(no_sample_points, params, x_1, y_1))(y)(x)
+
+    #### If that doesn't work then try this
+    """
+    # Define the inner loop i.e. k(x_i, y_j) for all y_j.
+    inner_loop = lambda x_1: jax.vmap(lambda y_1: func(no_sample_points, params, x_1, y_1))(y)
+    
+    # Compute the outer loop, i.e. the inner loop for all x_i.
+    gram = jax.lax.map(inner_loop, x)
+
+    """
+
+    return gram
 
 def generate_data(
                     data_generator: cdt.data.causal_pair_generator.CausalPairGenerator,

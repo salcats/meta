@@ -6,10 +6,10 @@ from smm import SMM
 from joblib import Parallel, delayed
 from ensembler import Ensembler
 from utilities import generate_data, compute_batched_train_grams, compute_batched_test_gram, compute_gram
-from utilities import smm_fit, smm_predict, smm_compute_model_results
+from utilities import smm_fit, smm_predict, smm_compute_model_results, compute_gram_gpu
 from timeit import default_timer as timer
 from hyperopt import hp, fmin, tpe
-
+from jax.lib import xla_bridge
 
 class Arbitrator():
     
@@ -149,30 +149,44 @@ class Arbitrator():
         -----------
 
         """
-        
-        if self.verbose:
-            print("\nComputing training gram matrix.")
-            start_time = timer()
-            
         # Compute training gram matrix.
+        platform = xla_bridge.get_backend().platform
         
-        if self.computation_params["batched_train"]==True:
-            self.data_train["gram"]  = compute_batched_train_grams(
-                                self.data_train["X"],
-                                self.kernel_func,
-                                self.kernel_params,
-                                self.data_params["no_train_samples"],
-                                self.computation_params["training_step_size"],
-                                self.computation_params["n_jobs"]  
+        if platform=="cpu":
+            
+            if self.verbose:
+                print("\nComputing training gram matrix on CPU.")
+                start_time = timer()
+
+            if self.computation_params["batched_train"]==True:
+                self.data_train["gram"]  = compute_batched_train_grams(
+                                    self.data_train["X"],
+                                    self.kernel_func,
+                                    self.kernel_params,
+                                    self.data_params["no_train_samples"],
+                                    self.computation_params["training_step_size"],
+                                    self.computation_params["n_jobs"]  
+                )
+            else:
+                self.data_train["gram"] = compute_gram(
+                                    self.kernel_func,
+                                    self.kernel_params,
+                                    self.data_train["X"],
+                                    self.data_train["X"],
+                )
+        elif platform=="gpu":
+            
+            if self.verbose:
+                print("\nComputing training gram matrix on GPU.")
+                start_time = timer()
+
+            self.data_train["gram"] = compute_gram_gpu(
+                                        self.kernel_func,
+                                        self.kernel_params,
+                                        self.data_train["X"],
+                                        self.data_train["X"],
             )
-        else:
-            self.data_train["gram"] = compute_gram(
-                                self.kernel_func,
-                                self.kernel_params,
-                                self.data_train["X"],
-                                self.data_train["X"],
-            )
-        
+            
         # Record time taken if requested.
         if self.verbose:
             time_taken = timer() - start_time
@@ -189,27 +203,42 @@ class Arbitrator():
         -----------
 
         """
-        if self.verbose:
-            print("\nComputing testing gram matrix.")
-            start_time = timer()
-            
         # Compute testing gram matrix.
-        if self.computation_params["batched_test"]==True:
-            self.data_test["gram"]  = compute_batched_test_gram(
-                                self.data_test["X"],
-                                self.data_train["X"],
-                                self.kernel_func,
-                                self.kernel_params,
-                                self.data_params["no_test_samples"],
-                                self.data_params["no_train_samples"],
-                                self.computation_params["n_jobs"]  
-            )
-        else:
-            self.data_test["gram"]  = compute_gram(
+        platform = xla_bridge.get_backend().platform
+        
+        if platform=="cpu":
+
+            if self.verbose:
+                print("\nComputing testing gram matrix on CPU.")
+                start_time = timer()
+                
+            if self.computation_params["batched_test"]==True:
+                self.data_test["gram"]  = compute_batched_test_gram(
+                                    self.data_test["X"],
+                                    self.data_train["X"],
                                     self.kernel_func,
                                     self.kernel_params,
-                                    self.data_test["X"],
-                                    self.data_train["X"]
+                                    self.data_params["no_test_samples"],
+                                    self.data_params["no_train_samples"],
+                                    self.computation_params["n_jobs"]  
+                )
+            else:
+                self.data_test["gram"]  = compute_gram(
+                                        self.kernel_func,
+                                        self.kernel_params,
+                                        self.data_test["X"],
+                                        self.data_train["X"]
+                )
+        elif platform=="gpu":
+            
+            if self.verbose:
+                print("\nComputing testing gram matrix on GPU.")
+                
+            self.data_test["gram"]  = compute_gram_gpu(
+                                        self.kernel_func,
+                                        self.kernel_params,
+                                        self.data_test["X"],
+                                        self.data_train["X"]
             )
             
         # Record time taken if requested.
