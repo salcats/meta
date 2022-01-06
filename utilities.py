@@ -424,9 +424,9 @@ def smm_contribution(no_test_samples, ensemble_params, smm):
                 
     # Compute SMM contribution according to ensemble configuration.
     if ensemble_params["accuracy"]:
-        smm_contribution = decisions*smm.predictions*onp.power(smm.accuracy, ensemble_params["accuracy_exponent"])
+        smm_contribution = decisions*smm.model_predictions*onp.power(smm.accuracy, ensemble_params["accuracy_exponent"])
     else:
-        smm_contribution = decisions*smm.predictions
+        smm_contribution = decisions*smm.model_predictions
 
     return smm_contribution
 

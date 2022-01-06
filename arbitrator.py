@@ -103,7 +103,9 @@ class Arbitrator():
             # Create SMM object for each base model.
             self.smms[base_model_name] = SMM(
                                         base_model,
+                                        base_model_name,
                                         self.smm_params["svm_param_grid"],
+                                        self.verbose
             )
          
     def generate_train_data(self):
@@ -357,14 +359,14 @@ class Arbitrator():
         if ensemble_params["average"]:
             
             # If average ensemble requested compute average ensemble.
-            ensemble_accuracy = self.ensembler.average_ensemble(ensemble_params)
+            ensemble_accuracy, ensemble_predictions = self.ensembler.average_ensemble(ensemble_params)
         
         else:
             
             # If maximum ensemble requested compute average ensemble.
-            ensemble_accuracy = self.ensembler.maximum_ensemble(ensemble_params)
+            ensemble_accuracy, ensemble_predictions = self.ensembler.maximum_ensemble(ensemble_params)
 
-        return ensemble_accuracy
+        return ensemble_accuracy, ensemble_predictions
     
     def compute_all_ensembles(self, max_accuracy_exponent):
         """ Computes all possible ensemble configurations. 
@@ -385,7 +387,8 @@ class Arbitrator():
                                     "Exponentiated decisions": [],
                                     "Accuracy weighted": [],
                                     "Accuracy exponent": [],
-                                    "Ensemble accuracy": []
+                                    "Ensemble accuracy": [],
+                                    "Ensemble predictions": []
         }
 
         # Compute all ensembel configurations for boolean valued ensemble parameters.
@@ -406,8 +409,10 @@ class Arbitrator():
                                     "accuracy_exponent": accuracy_exponent
                 }
                 
-                # Compute and store ensemble accuracy.
-                ensemble_params_dict["Ensemble accuracy"].append(self.compute_ensemble_prediction(ensemble_params))
+                # Compute ensemble predicitons and accuracy. 
+                ensemble_accuracy, ensemble_predictions = self.compute_ensemble_prediction(ensemble_params)
+                ensemble_params_dict["Ensemble accuracy"].append(ensemble_accuracy)
+                ensemble_params_dict["Ensemble predictions"].append(ensemble_predictions)
 
                 # Store ensemble configuration. 
                 ensemble_params_dict["Average"].append(ensemble_params["average"])
@@ -524,3 +529,54 @@ class Arbitrator():
 
         return best_results_dataframe, best_accuracy
 
+    def predict(
+                    self,
+                    return_with_accuracy=True,
+                    run_hp_optimisation=False,
+                    hp_optimisation_params=False
+        ):
+
+        self.initialise_smms()
+
+        if run_hp_optimisation:
+
+            self.perform_kernel_hp_optimisation(hp_optimisation_params)
+
+
+        # Generate data.
+        self.generate_train_data()
+        self.generate_test_data()
+        self.compute_model_results_smms()
+
+        # Compute gram matrices.
+        self.compute_train_gram()
+        self.compute_test_gram()
+                
+        # Initialise, fit and predict with SMMs
+        self.fit_smms()
+        self.predict_smms()
+
+        # Initialise ensembler
+        self.initialise_ensembler()
+
+        # Compute all ensemble configurations and return the best results.
+        max_accuracy_exponent = 4
+        best_results_dataframe, best_accuracy = self.compute_all_ensembles(max_accuracy_exponent)
+
+        predictions = {"Ensemble": []}
+        accuracies = {"Ensemble": best_accuracy}
+        
+        for smm_name, smm in self.smms.items():
+            predictions[smm_name] = smm.model_predictions
+            accuracies[smm_name] = smm.model_accuracy
+
+        if len(best_results_dataframe["Ensemble predictions"]) > 1:
+            predictions["Ensemble"] = list(best_results_dataframe["Ensemble predictions"])[0]
+
+        else:
+            predictions["Ensemble"] = list(best_results_dataframe["Ensemble predictions"])
+
+        if return_with_accuracy:
+            return predictions, accuracies 
+        else:
+            return predictions

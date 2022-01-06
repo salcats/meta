@@ -15,8 +15,8 @@ from utilities import rq_kernel, rbf_kernel
 data_params = {
                 "causal_mechanism": "sigmoid_mix",
                 "noise_coeff": 0.2,
-                "no_sample_points": 250,
-                "no_train_samples": 250,                
+                "no_sample_points": 50,
+                "no_train_samples": 100,                
                 "no_test_samples": 50,
                 "rescale": True
 }
@@ -63,6 +63,18 @@ arbitrator = Arbitrator(
                             base_models,
                             verbose
 )
+
+
+# If you just want predict method with no hp optimisation.
+return_with_accuracy = True
+predictions, accuracies = arbitrator.predict(return_with_accuracy)
+print(predictions)
+print(accuracies)
+quit()
+
+###############################################################################
+
+# If you want more detail about the results and/or want to do HP optimisation.
 
 run_hp_optimisation = False
 

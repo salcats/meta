@@ -61,7 +61,10 @@ class Ensembler():
         # Determine ensemble causal prediction and return the accuracy.                   
         ensemble_predictions = onp.sign(ensemble_predictions)
 
-        return accuracy_score(self.data_test["labels"], ensemble_predictions)
+        # Compute accuracy.
+        ensemble_accuracy = accuracy_score(self.data_test["labels"], ensemble_predictions)
+        
+        return ensemble_accuracy, ensemble_predictions
     
     def maximum_ensemble(self, ensemble_params):
         """  Compute maximum ensemble.      
@@ -90,5 +93,8 @@ class Ensembler():
         # Determine ensemble causal prediction and return the accuracy.                   
         ensemble_predictions = onp.sign(return_max_entries(ensemble_predictions))
 
-        return accuracy_score(self.data_test["labels"], ensemble_predictions)
+        # Compute accuracy.
+        ensemble_accuracy = accuracy_score(self.data_test["labels"], ensemble_predictions)
+        
+        return ensemble_accuracy, ensemble_predictions
     
