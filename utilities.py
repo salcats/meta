@@ -6,13 +6,16 @@ import cdt
 from typing import Callable, Dict 
 from joblib import Parallel, delayed
 
-
-@functools.partial(jax.jit, static_argnums=(0, 4))
-def pdist_squareform(no_sample_points: float, x: jnp.ndarray, y: jnp.ndarray) -> jnp.ndarray:
+#### TODO - Try changing to 3d array 
+def pdist_squareform(xy_i: jnp.ndarray, xy_j: jnp.ndarray, no_sample_points: int) -> jnp.ndarray:
     """  Computes the squared euclidean distance matrix.
 
-    This function computes the squared euclidean distance matrix between two 
-    samples x, y from probability distributions P and Q.
+    This function computes the squared euclidean distance matrix between two empircal joint
+    distributions P_(X_i, Y_i), Q_(X_j, Y_j) where
+    
+    -- (x^i_k, y^i_k) are samples drawn from the joint P_(X_i, Y_i) 
+    -- (x^j_k, y^j_k) are samples drawn from the joint P_(X_j, Y_j) 
+
 
     Parameters
     -----------
@@ -23,17 +26,22 @@ def pdist_squareform(no_sample_points: float, x: jnp.ndarray, y: jnp.ndarray) ->
 
     """
     I = jax.device_put(jnp.ones((no_sample_points, )))
-                       
-    return jnp.outer(jnp.power(x, 2), I) \
-        + jnp.outer(I, jnp.power(y, 2))  \
-            - 2*jnp.outer(x, y)  
+    
+    x_i  = jax.lax.dynamic_slice(xy_i, (0,), (no_sample_points,))
+    y_i  = jax.lax.dynamic_slice(xy_i, (no_sample_points,), (no_sample_points,))
 
-@functools.partial(jax.jit,  static_argnums=(0, 4))
-def rbf_kernel(
-                no_sample_points: float,
-                params: Dict[str, float],
+    x_j  = jax.lax.dynamic_slice(xy_j, (0,), (no_sample_points,))
+    y_j  = jax.lax.dynamic_slice(xy_j, (no_sample_points,), (no_sample_points,))
+    
+    return jnp.outer(jnp.power(x_i, 2) + jnp.power(y_i, 2), I)\
+         + jnp.outer(I, jnp.power(x_j, 2) + jnp.power(y_j, 2))\
+         - 2*(jnp.outer(x_i, x_j) + jnp.outer(y_i, y_j))  
+
+def rbf_kernel( 
                 x: jnp.ndarray,
-                y: jnp.ndarray
+                y: jnp.ndarray,    
+                params: Dict[str, float],       
+                no_sample_points: int,
     ) -> jnp.ndarray:
     """   Computes the inner product between two samples x, y constructed from
     RBF kernel.
@@ -50,14 +58,13 @@ def rbf_kernel(
     -----------
 
     """
-    return jnp.mean(jnp.exp(-params["gamma"] * pdist_squareform(no_sample_points, x, y)))
+    return jnp.mean(jnp.exp(-params["gamma"] * pdist_squareform(x, y, no_sample_points)))
 
-@functools.partial(jax.jit,  static_argnums=(0, 4))
 def rq_kernel(
+                x: jnp.ndarray,
+                y: jnp.ndarray,
                 no_sample_points: float,
                 params: Dict[str, float],
-                x: jnp.ndarray,
-                y: jnp.ndarray
     ) -> jnp.ndarray:
     """  Computes the inner product between two samples x, y in a RKHS constructed from 
     RQ kernel.
@@ -74,9 +81,9 @@ def rq_kernel(
     -----------
 
     """ 
-    return jnp.mean(jnp.power(1 + (params["factor"]*pdist_squareform(no_sample_points, x, y)), -params["alpha"]))
+    return jnp.mean(jnp.power(1 + (params["factor"]*pdist_squareform(x, y, no_sample_points)), -params["alpha"]))
 
-@functools.partial(jax.jit, static_argnums=(0, 4))
+@functools.partial(jax.jit, static_argnums=(0, 5))
 def compute_gram(
                     func: Callable,
                     params: Dict[str, float],
@@ -97,14 +104,14 @@ def compute_gram(
 
     """    
     # Determine the number of points in each sample.
-    no_sample_points = x.shape[1]
+    no_sample_points = int(x.shape[1]/2)
     
     # Define the inner loop i.e. k(x_i, y_j) for all y_j.
-    inner_loop = lambda x_1: jax.vmap(lambda y_1: func(no_sample_points, params, x_1, y_1))(y)
+    inner_loop = lambda x_1: jax.vmap(lambda y_1: func(x_1, y_1, params, no_sample_points))(y)
     
     # Compute the outer loop, i.e. the inner loop for all x_i.
     gram = jax.lax.map(inner_loop, x)
-
+                 
     return gram
 
 
@@ -136,12 +143,12 @@ def compute_gram_gpu(
     no_sample_points = x.shape[1]
         
     # Compute the outer loop, i.e. the inner loop for all x_i.
-    gram = jax.vmap(lambda x_1, y_1: func(no_sample_points, params, x_1, y_1))(y)(x)
+    gram = jax.vmap(lambda x_1, y_1: func(x_1, y_1, params, no_sample_points))(y)(x)
 
     #### If that doesn't work then try this
     """
     # Define the inner loop i.e. k(x_i, y_j) for all y_j.
-    inner_loop = lambda x_1: jax.vmap(lambda y_1: func(no_sample_points, params, x_1, y_1))(y)
+    inner_loop = lambda x_1: jax.vmap(lambda y_1: func(x_1, y_1, params, no_sample_points))(y)
     
     # Compute the outer loop, i.e. the inner loop for all x_i.
     gram = jax.lax.map(inner_loop, x)
@@ -150,6 +157,7 @@ def compute_gram_gpu(
 
     return gram
 
+#### TODO - Add some routine for making the pairs the same number of sample points.
 def generate_data(
                     data_generator: cdt.data.causal_pair_generator.CausalPairGenerator,
                     no_samples: int,
@@ -189,6 +197,7 @@ def generate_data(
 
     return [X, X_df, labels]
 
+
 def compute_model_results(
                             model: cdt.causality.pairwise,
                             data: onp.ndarray,
@@ -212,6 +221,7 @@ def compute_model_results(
     scores[scores==0] = -1
     
     return {"predictions": predictions, "scores": scores}
+
 
 def return_max_entries(array: onp.ndarray):
     """ Returns the max entry in each row from a matrix as a vector.

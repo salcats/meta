@@ -11,12 +11,14 @@ from utilities import rq_kernel, rbf_kernel
 ## for computing the batched gram matrices.
 ## Leave the training_step_size=50 for the batched computation of training grams. 
 
+## Pretty sure this is fixed and working better and faster!
+
 # Define data parameters.
 data_params = {
-                "causal_mechanism": "sigmoid_mix",
+                "causal_mechanism": "sigmoid_add",
                 "noise_coeff": 0.2,
-                "no_sample_points": 50,
-                "no_train_samples": 100,                
+                "no_sample_points": 250,
+                "no_train_samples": 250,                
                 "no_test_samples": 50,
                 "rescale": True
 }
@@ -70,6 +72,10 @@ return_with_accuracy = True
 predictions, accuracies = arbitrator.predict(return_with_accuracy)
 print(predictions)
 print(accuracies)
+
+
+
+
 quit()
 
 ###############################################################################
